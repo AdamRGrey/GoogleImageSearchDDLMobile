@@ -9,9 +9,56 @@
 // @license	 MIT
 // ==/UserScript==
 
-let wantedImage = $("img.isv-i[src]");
-let contextLink = $("a.isv-d.isv-rl[ping]");
-let contextLinkTextNode = contextLink.find(":not(iframe)").filter(function () { return $(this).html() === $(this).text(); });
+let contextLinkSelector = "a.isv-d.isv-rl[ping]";
+function foundAContextLink(contextLink){
+	let wantedImage = $("img.isv-i[src]");
 
-contextLinkTextNode.text("direct");
-contextLink.prop("href", wantedImage.prop("src"));
+	let contextLinkTextNode = $(contextLink).find(":not(iframe)").filter(function () { return $(this).html() === $(this).text() && $(this).text().length > 0; });
+	contextLinkTextNode.text("direct");
+
+	let linkNode = $(contextLinkTextNode);
+	while(true){
+		if(linkNode[0].tagName.toLowerCase() === "a"){
+			break;
+		}
+		linkNode = linkNode.parent();
+		if(linkNode.length === 0){
+			console.error("couldn't find an anchor as a parent?");
+			return;
+		}
+	}
+	if(linkNode[0].tagName.toLowerCase() !== "a"){
+		console.error("somehow didn't find an anchor as a parent?");
+		return;
+	}
+
+	linkNode.prop("href", wantedImage.prop("src"));
+	linkNode.prop("download", true);
+}
+function checkAndMessWith(node){
+	if($(contextLinkSelector).is(node)){
+		foundAContextLink(node);
+	}
+	$(node).find("*").toArray().forEach(function(subNode){
+		if($(contextLinkSelector).is(subNode)){
+			foundAContextLink(subNode);
+		}
+	});
+}
+function observeMutations(mutations){
+	mutations.forEach(function(mutation){
+		if(mutation.addedNodes.length > 0){
+			mutation.addedNodes.forEach(function(addedNode){
+				checkAndMessWith(addedNode);
+			});
+		}
+		let contextLinkFound = $(contextLinkSelector)[0];
+		if(mutation.target !== null
+			&& $.contains(mutation.target, contextLinkFound)){
+			checkAndMessWith(contextLinkFound);
+		}
+	});
+}
+const MutationObserver = window.MutationObserver || window.WebKitMutationObserver || window.MozMutationObserver;
+const overallObserver = new MutationObserver(observeMutations);
+overallObserver.observe(document, { childList: true, subtree: true, attributes: true });
